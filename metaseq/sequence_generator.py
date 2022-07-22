@@ -178,6 +178,7 @@ class SequenceGenerator(nn.Module):
             tokens[:, :start_step],
             incremental_state=incremental_states,
         )
+
         # normalize
         model_out[0].div_(self.temperature)
 
@@ -266,14 +267,21 @@ class SequenceGenerator(nn.Module):
         sorted_indices = (
             indices + beam_size * torch.arange(bsz, device=lprobs.device).unsqueeze(1)
         ).view(-1)
-        tokens = tokens[sorted_indices]
-        scores = scores[sorted_indices]
+        tokens = tokens[sorted_indices].view(bsz, beam_size, -1)[:, :, 1:]
+        scores = scores[sorted_indices].view(bsz, beam_size, -1)[:, :, 1:]
+
+        assert(bsz == 1)
+        assert(beam_size == 1)
 
         # prepare the return value
-        retval = {
-            "tokens": tokens.view(bsz, beam_size, -1)[:, :, 1:],
-            "scores": scores.view(bsz, beam_size, -1)[:, :, 1:],
-        }
+        length_minus_pad = (tokens[0][0] == self.pad).nonzero()[0].item() if (tokens[0][0] == self.pad).sum() > 0 else len(tokens[0][0])
+
+        retval = [[{
+          "tokens": tokens[0][0][:length_minus_pad],
+          "scores": scores[0][0][:length_minus_pad],
+            }]]
+
+
         if all_lprobs is not None:
             all_lprobs = all_lprobs[sorted_indices]
             retval["distributions"] = all_lprobs.view(
