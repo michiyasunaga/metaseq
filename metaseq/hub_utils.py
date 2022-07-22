@@ -104,8 +104,8 @@ def from_pretrained(
     }
 
 
-def tensorize_input(tokenizer, prompts):
-    input_ids = tokenizer(prompts, return_tensors="pt").input_ids
+def tensorize_input(tokenizer, prompt):
+    input_ids = torch.LongTensor(tokenizer.encode(prompt).ids).unsqueeze(0)
     input_ids = torch.cat([torch.tensor([[0]]), input_ids], dim=-1)
     input_ids = input_ids
     return input_ids
@@ -113,7 +113,7 @@ def tensorize_input(tokenizer, prompts):
 
 def get_next_token(logits, tokenizer):
     pred_next_token = torch.argmax(logits[0, -1], -1)
-    next_token = tokenizer.convert_ids_to_tokens([pred_next_token])
+    next_token = tokenizer.decode([pred_next_token])
     next_token = next_token[0].replace("Ġ", "")
     return next_token
 
@@ -121,9 +121,7 @@ def get_next_token(logits, tokenizer):
 def setup_vocab_and_merges(model_path):
     vocab_file = os.path.join(model_path, "gpt2-vocab.json")
     merges_file = os.path.join(model_path, "gpt2-merges.txt")
-    tokenizer = ByteLevelBPETokenizer.from_file(
-        vocab_file, merges_file
-    )
+    tokenizer = ByteLevelBPETokenizer.from_file(vocab_file, merges_file)
     return vocab_file, merges_file, tokenizer
 
 
