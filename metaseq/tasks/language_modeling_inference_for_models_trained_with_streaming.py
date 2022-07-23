@@ -125,6 +125,31 @@ class LanguageModelingInferenceForModelsTrainedWithStreamingConfig(MetaseqDatacl
     update_freq: List[int] = II("optimization.update_freq")
 
 
+import numpy as np
+import torch
+from metaseq.data import BaseWrapperDataset
+
+class TrimTokenLeftDataset(BaseWrapperDataset):
+    def __init__(self, dataset):
+        super().__init__(dataset)
+
+    def __getitem__(self, idx):
+        item = self.dataset[idx]
+        # assert len(item) > 1, len(item)
+        item = item[1:]
+        return item
+
+class TrimTokenRightDataset(BaseWrapperDataset):
+    def __init__(self, dataset):
+        super().__init__(dataset)
+
+    def __getitem__(self, idx):
+        item = self.dataset[idx]
+        # assert len(item) > 1, len(item)
+        item = item[:-1]
+        return item
+
+
 @register_task(
     "language_modeling_inference_for_models_trained_with_streaming",
     dataclass=LanguageModelingInferenceForModelsTrainedWithStreamingConfig,
@@ -264,34 +289,23 @@ class LanguageModelingInferenceForModelsTrainedWithStreamingTask(LegacyTask):
         (or bos if `--add-bos-token` is set) and we append a <pad> to target.
         This is convenient both for generation with a prefix and LM scoring.
         """
-        dataset = StripTokenDataset(
-            TokenBlockDataset(
-                src_tokens,
-                src_lengths,
-                block_size=None,  # ignored for "eos" break mode
-                pad=self.source_dictionary.pad(),
-                eos=self.source_dictionary.eos(),
-                break_mode="eos",
-            ),
-            # remove eos from (end of) target sequence
-            self.source_dictionary.eos(),
+        dataset = TokenBlockDataset(
+            src_tokens,
+            src_lengths,
+            block_size=None,  # ignored for "eos" break mode
+            pad=self.source_dictionary.pad(),
+            eos=self.source_dictionary.eos(),
+            break_mode="eos",
         )
-        src_dataset = PrependTokenDataset(
-            dataset,
-            token=(
-                self.source_dictionary.bos()
-                if getattr(self.args, "add_bos_token", False)
-                else self.eod
-                # In some models we accidently replaced this with <endoftext/>
-                # (id:4) but it seems they work with eos as well so we will
-                # keep this way in this experimental task until figure a better
-                # flexible soluton.
-            ),
-        )
+
+        src_dataset = dataset
         src_dataset = MultiplePadDataset(
-            src_dataset, pad_idx=self.source_dictionary.pad(), multiple=8
+            src_dataset, pad_idx=self.source_dictionary.pad(), multiple=1, #Michi: changed because multiple=8 causes error in multihead_attention.py
         )
+
         tgt_dataset = AppendTokenDataset(dataset, token=self.source_dictionary.pad())
+        tgt_dataset = TrimTokenLeftDataset(dataset)
+
         return NestedDictionaryDataset(
             {
                 "id": IdDataset(),
@@ -300,7 +314,7 @@ class LanguageModelingInferenceForModelsTrainedWithStreamingTask(LegacyTask):
                     "src_lengths": NumelDataset(src_dataset, reduce=False),
                 },
                 "target": MultiplePadDataset(
-                    tgt_dataset, pad_idx=self.source_dictionary.pad(), multiple=8
+                    tgt_dataset, pad_idx=self.source_dictionary.pad(), multiple=1, #Michi: changed because multiple=8 causes error in multihead_attention.py
                 ),
             },
             sizes=[np.array(src_lengths)],

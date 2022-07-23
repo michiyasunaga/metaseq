@@ -115,7 +115,7 @@ class SequenceGenerator(nn.Module):
             src_tokens = net_input["src_tokens"]
             # length of the source text being the character length except EndOfSentence and pad
             src_lengths = (
-                (src_tokens.ne(self.eos) & src_tokens.ne(self.pad)).long().sum(dim=1)
+                (src_tokens.ne(self.pad)).long().sum(dim=1) -1 #Michi change
             )
         elif "source" in net_input:
             src_tokens = net_input["source"]
@@ -132,7 +132,7 @@ class SequenceGenerator(nn.Module):
         bsz, src_len = src_tokens.size()[:2]
         beam_size = self.beam_size
 
-        max_len = min(self.model.max_decoder_positions() - 1, self.max_len_b or 1e99)
+        max_len = min(self.model.max_decoder_positions() - 1, int(self.max_len_a * src_len + self.max_len_b) or 1e99) #Michi change
         min_len = min(max_len - 1, self.min_len or 0)
 
         assert (
@@ -309,6 +309,7 @@ class SequenceGenerator(nn.Module):
             if step >= max_len:
                 lprobs[:, : self.eos] = -math.inf
                 lprobs[:, self.eos + 1 :] = -math.inf
+                lprobs[:, self.eos] = 1 #Michi added
 
             # Shape: (batch, cand_size)
             cand_scores, cand_indices, cand_beams = self.search.step(
